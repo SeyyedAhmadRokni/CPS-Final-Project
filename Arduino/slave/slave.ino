@@ -6,8 +6,8 @@
 RF24 radio(9, 10); // CE, CSN
 const byte address[6] = "00001";
 
-// Output devices
-const int ledPin = 7; // You can replace this with any actuator (e.g., relay, buzzer)
+// Output device (e.g., LED or relay)
+const int ledPin = 7;
 
 void setup() {
   Serial.begin(9600);
