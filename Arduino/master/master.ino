@@ -56,6 +56,13 @@ void setup() {
   Serial.println("Master Ready.");
 }
 
+
+
+#define OBJECT 1
+#define NIGHT 2
+#define DAY 3
+
+
 bool detectingObject() {
   int potValue = analogRead(potPin);
   // Convert to voltage (0-5V)
@@ -73,11 +80,11 @@ bool detectingObject() {
   // return measure.RangeStatus == 0 && measure.RangeMilliMeter < DIST_THRESHOLD_CM * 10;
 }
 
-void sendMessageToNext(){
+void sendMessageToNext(int status){
 
 }
 
-float getLightStatus() {
+bool getLightStatus() {
   bool isNight = 1;
   
   // float lux = lightSensor.getAmbientLight();
@@ -86,8 +93,8 @@ float getLightStatus() {
   float lux = analogRead(lightPin);
   Serial.print("LUX:");
   Serial.println(lux);
-  isNight = lux > 930;
-  return lux;
+  isNight = lux > 930.0;
+  return isNight;
 }
 
 void loop() {
@@ -97,35 +104,36 @@ void loop() {
 
   // // Temp & Humidity
   float temp;
-  // temp = dht.readTemperature();
+  temp = dht.readTemperature();
 
   float hum;
-  // hum = dht.readHumidity();
+  hum = dht.readHumidity();
+  bool isRainy = hum > 80.0;
   
   bool objectDetected = detectingObject();
 
-  if (objectDetected) {
-    ss.println("WAKE");
+  if (objectDetected && (isNight || isRainy)){
+    Serial.println("WAKE");
     
-    ss.print("TEMP:");
-    ss.println(temp);
-    ss.print("HUM:");
-    ss.println(hum);
+    Serial.print("TEMP:");
+    Serial.println(temp);
+    Serial.print("HUM:");
+    Serial.println(hum);
 
-    sendMessageToNext();
+    sendMessageToNext(OBJECT);
 
-  //   if (isNight || hum > 80) {
-  //     analogWrite(LED_PIN, 255);  // 100% brightness
-  //   } else {
-  //     analogWrite(LED_PIN, 0);    // Off during day
-  //   }
-  // } else {
-  //   if (isNight || hum > 80) {
-  //     analogWrite(LED_PIN, 77);   // ~30% brightness
-  //   } else {
-  //     analogWrite(LED_PIN, 0);    // Off during day
-  //   }
-  }
+    
+    digitalWrite(LED_PIN, HIGH);  // 100% brightness
+    
+  } else if (isNight || isRainy) {
+    digitalWrite(LED_PIN, HIGH);   // ~30% brightness
+    sendMessageToNext(HIGH);
+
+  } else {
+
+    digitalWrite(LED_PIN, LOW);    // Off during day
+    sendMessageToNext(DAY);
+  }    
 
   delay(5000);
 }
