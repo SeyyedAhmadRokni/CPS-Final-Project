@@ -1,139 +1,140 @@
 #include <Wire.h>
-#include <Adafruit_VL53L0X.h>
 #include <DHT.h>
 #include <SoftwareSerial.h>
 #include <AP3216_WE.h>
 
-// ==== VL53L0X ====
-Adafruit_VL53L0X lox = Adafruit_VL53L0X();
-#define DIST_THRESHOLD_CM 100
-
-// ==== DHT11 ====
-#define DHTPIN 2
+// =========== پین‌ها ============
+#define DHTPIN 10
 #define DHTTYPE DHT11
+#define LED_PIN1 7
+#define LED_PIN2 8
+#define DISTANCE_PIN 5
+#define WAKE_SLAVE_PIN 6
+#define DIST_THRESHOLD_MM 1000 // آستانه فاصله (1000 میلی‌متر)
+
 DHT dht(DHTPIN, DHTTYPE);
-
-// ==== AP3216C ====
-#define AP3216_I2C_ADDR 0x1E  // Default I2C address
-AP3216_WE lightSensor = AP3216_WE(AP3216_I2C_ADDR);
-
-// ==== LED ====
-#define LED_PIN 9
-
-// ==== Serial to S1 ====
+AP3216_WE lightSensor = AP3216_WE(0x1E);
 SoftwareSerial ss(10, 11); // RX, TX
 
-// Potentiometer pin
-const int potPin = A0;
+// وضعیت‌ها
+#define STATE_OFF 0
+#define STATE_ON  1
+#define STATE_BLINK 2
+#define STATE_DIM 3
 
-const int lightPin = A1;
-
+void logEvent(String message) {
+  Serial.print("[LOG @ ");
+  Serial.print(millis());
+  Serial.print(" ms] ");
+  Serial.println(message);
+}
 
 void setup() {
   Serial.begin(9600);
   ss.begin(9600);
-
-  pinMode(LED_PIN, OUTPUT);
-  pinMode(potPin, INPUT);
-  pinMode(lightPin, INPUT);
-  dht.begin();
   Wire.begin();
-  Serial.println("Mellow!");
 
-  // Initialize VL53L0X
-  // if (!lox.begin()) {
-  //   Serial.println("VL53L0X not found!");
-  //   while (1);
-  // }
+  pinMode(LED_PIN1, OUTPUT);
+  pinMode(LED_PIN2, OUTPUT);
+  pinMode(DISTANCE_PIN, INPUT);
+  pinMode(WAKE_SLAVE_PIN, OUTPUT);
+  digitalWrite(WAKE_SLAVE_PIN, LOW);
 
-  // Initialize AP3216 with AP3216_WE library
-  // lightSensor.init();
-  
-  // Configure sensor settings
-  // lightSensor.setLuxRange(RANGE_20661);  // Set to highest range
-  // lightSensor.setMode(AP3216_ALS);      // Ambient light sensing mode
+  dht.begin();
+  lightSensor.init();
 
-  Serial.println("Master Ready.");
+  logEvent("Master Ready.");
+  delay(500);
 }
 
-
-
-#define OBJECT 1
-#define NIGHT 2
-#define DAY 3
-
-
-bool detectingObject() {
-  int potValue = analogRead(potPin);
-  // Convert to voltage (0-5V)
-  float voltage = potValue * (5.0 / 1023.0);
-  Serial.print("Raw Value: ");
-  Serial.print(potValue);
-  Serial.print("\tVoltage: ");
-  Serial.println(voltage);
-  return voltage >= 2.5;
-
-  //in main program return this
-
-  // VL53L0X_RangingMeasurementData_t measure;
-  // lox.rangingTest(&measure, false);
-  // return measure.RangeStatus == 0 && measure.RangeMilliMeter < DIST_THRESHOLD_CM * 10;
+bool isObjectDetected() {
+  unsigned long duration = pulseIn(DISTANCE_PIN, HIGH);
+  uint16_t distance = duration / 10;
+  logEvent("Distance measured: " + String(distance) + " mm");
+  return distance > 0 && distance < DIST_THRESHOLD_MM;
 }
 
-void sendMessageToNext(int status){
-
+bool isNight() {
+  float lux = lightSensor.getAmbientLight();
+  logEvent("Ambient light: " + String(lux) + " lux");
+  return lux > 930;
 }
 
-bool getLightStatus() {
-  bool isNight = 1;
-  
-  // float lux = lightSensor.getAmbientLight();
-  // isNight = lux < 50;
+bool isRainy() {
+  float hum = dht.readHumidity();
+  logEvent("Humidity: " + String(hum) + " %");
+  return hum > 50.0;
+}
 
-  float lux = analogRead(lightPin);
-  Serial.print("LUX:");
-  Serial.println(lux);
-  isNight = lux > 930.0;
-  return isNight;
+void wakeSlave() {
+  digitalWrite(WAKE_SLAVE_PIN, HIGH);
+  delay(50);
+  digitalWrite(WAKE_SLAVE_PIN, LOW);
+  logEvent("Sent wake signal to slave");
+}
+
+void sendStateToSlave(int state) {
+  wakeSlave(); // ابتدا اسلیو را بیدار کن
+  delay(10);   // کمی تأخیر برای آماده‌سازی
+  ss.println(state);
+  logEvent("Sent state to slave: " + String(state));
+}
+
+void applyState(int state) {
+  switch (state) {
+    case STATE_OFF:
+      digitalWrite(LED_PIN1, LOW);
+      digitalWrite(LED_PIN2, LOW);
+      logEvent("Applied STATE_OFF: LEDs OFF");
+      break;
+
+    case STATE_DIM:
+      digitalWrite(LED_PIN1, HIGH);
+      digitalWrite(LED_PIN2, LOW);
+      logEvent("Applied STATE_DIM: LED1 ON, LED2 OFF");
+      break;
+
+    case STATE_ON:
+      digitalWrite(LED_PIN1, HIGH);
+      digitalWrite(LED_PIN2, HIGH);
+      logEvent("Applied STATE_ON: Both LEDs ON");
+      break;
+
+    default:
+      logEvent("Unknown state");
+  }
 }
 
 void loop() {
+  logEvent("Loop start");
 
-  bool isNight = getLightStatus();
-  // lux = lightSensor.getAmbientLight();
+  bool night = isNight();
+  bool rainy = isRainy();
+  bool carDetected = isObjectDetected();
 
-  // // Temp & Humidity
-  float temp;
-  temp = dht.readTemperature();
-
-  float hum;
-  hum = dht.readHumidity();
-  bool isRainy = hum > 80.0;
-  
-  bool objectDetected = detectingObject();
-
-  if (objectDetected && (isNight || isRainy)){
-    Serial.println("WAKE");
-    
-    Serial.print("TEMP:");
-    Serial.println(temp);
-    Serial.print("HUM:");
-    Serial.println(hum);
-
-    sendMessageToNext(OBJECT);
-
-    
-    digitalWrite(LED_PIN, HIGH);  // 100% brightness
-    
-  } else if (isNight || isRainy) {
-    digitalWrite(LED_PIN, HIGH);   // ~30% brightness
-    sendMessageToNext(HIGH);
-
+  int stateToSend;
+  if (night || rainy) {
+    stateToSend = carDetected ? STATE_ON : STATE_DIM;
   } else {
+    stateToSend = STATE_OFF;
+  }
 
-    digitalWrite(LED_PIN, LOW);    // Off during day
-    sendMessageToNext(DAY);
-  }    
+  sendStateToSlave(stateToSend);
 
+  if (carDetected && stateToSend == STATE_ON) {
+    // چراغ‌ها کاملاً روشن
+    applyState(STATE_ON);
+    delay(1500);  // عبور ماشین
+
+    // کاهش روشنایی
+    digitalWrite(LED_PIN1, HIGH);
+    digitalWrite(LED_PIN2, LOW);
+    logEvent("Reduced brightness: LED1 ON, LED2 OFF");
+  } else {
+    // در غیر این صورت، وضعیت عادی
+    applyState(stateToSend);
+  }
+
+  logEvent("Loop end");
   delay(5000);
 }
