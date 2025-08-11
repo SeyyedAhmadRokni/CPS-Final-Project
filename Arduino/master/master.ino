@@ -3,33 +3,37 @@
 #include <SoftwareSerial.h>
 #include <AP3216_WE.h>
 
-// =========== پین‌ها ============ 
-#define DHTPIN 12
-#define DHTTYPE DHT11
-#define LED_PIN1 7
-#define LED_PIN2 8
-#define DISTANCE_PIN 5  
-#define WAKE_SLAVE_PIN 6
-#define DIST_THRESHOLD_MM 1000
+// =========== Pin Definitions ============
+#define DHTPIN 12              // DHT11 sensor data pin
+#define DHTTYPE DHT11          // DHT sensor type
+#define LED_PIN1 7             // LED output pin 1
+#define LED_PIN2 8             // LED output pin 2
+#define DISTANCE_PIN 5         // Distance sensor signal pin
+#define WAKE_SLAVE_PIN 6       // Pin to wake the slave node
+#define DIST_THRESHOLD_MM 1000 // Max detection distance in millimeters
 
+// Sensor & communication objects
 DHT dht(DHTPIN, DHTTYPE);
-AP3216_WE lightSensor = AP3216_WE(0x1E);
-SoftwareSerial ss(10, 11); // RX, TX
+AP3216_WE lightSensor = AP3216_WE(0x1E);  // Ambient light sensor I2C address
+SoftwareSerial ss(10, 11); // RX, TX for slave communication
 
+// Lighting states
 #define STATE_OFF 0
 #define STATE_ON  1
 #define STATE_BLINK 2
 #define STATE_DIM 3
 
+// ---------- Initialize the AP3216 light sensor ----------
 void initAP3216() {
   Wire.beginTransmission(0x1E);
-  Wire.write(0x00);      // رجیستر کنترل
-  Wire.write(0x03);      // فعال کردن ALS + PS + IR
+  Wire.write(0x00);   // Register: system configuration
+  Wire.write(0x03);   // Power ON, ALS+PS+IR active
   Wire.endTransmission();
 
-  delay(100);  // فرصت راه‌اندازی به سنسور بده
+  delay(100);  // Allow sensor to stabilize
 }
 
+// ---------- Logging helper function ----------
 void logEvent(String message) {
   Serial.print("[LOG @ ");
   Serial.print(millis());
@@ -37,17 +41,19 @@ void logEvent(String message) {
   Serial.println(message);
 }
 
+// ---------- Setup routine ----------
 void setup() {
   Serial.begin(9600);
   logEvent("Serial initialized");
 
-  ss.begin(9600);
+  ss.begin(9600);  // For communication with slave node
   logEvent("SoftwareSerial initialized");
 
-  Wire.begin();
+  Wire.begin();    // Start I2C bus
   initAP3216();
   logEvent("Wire initialized");
 
+  // Configure I/O pins
   pinMode(LED_PIN1, OUTPUT);
   pinMode(LED_PIN2, OUTPUT);
   pinMode(DISTANCE_PIN, INPUT);
@@ -55,19 +61,20 @@ void setup() {
   digitalWrite(WAKE_SLAVE_PIN, LOW);
   logEvent("Pin modes set");
 
-  dht.begin();
+  dht.begin(); // Start DHT11 temperature/humidity sensor
   logEvent("DHT initialized");
 
-  // lightSensor.init();  // این خط رو موقتاً کامنت کن
+  // Skipped AP3216 built-in init() to avoid conflicts during debug
   logEvent("Skipped light sensor init for debug");
 
   logEvent("Master Ready.");
   delay(500);
 }
 
+// ---------- Read raw ambient light value from AP3216 ----------
 uint16_t readLightRaw() {
   Wire.beginTransmission(0x1E);
-  Wire.write(0x0C);  // رجیستر نور محیط
+  Wire.write(0x0C); // ALS data low byte register
   Wire.endTransmission();
 
   Wire.requestFrom(0x1E, 2);
@@ -80,11 +87,11 @@ uint16_t readLightRaw() {
   return lux;
 }
 
+// ---------- Check if an object (e.g., a car) is detected ----------
 bool isObjectDetected() {
   logEvent("Checking distance...");
 
-  // منتظر یک سیگنال پایدار باش
-  uint32_t timeout = 30000;
+  uint32_t timeout = 30000; // Timeout for pulseIn
   unsigned long duration = pulseIn(DISTANCE_PIN, HIGH, timeout);
 
   if (duration == 0) {
@@ -92,27 +99,29 @@ bool isObjectDetected() {
     return false;
   }
 
-  uint16_t distance = duration / 10;
+  uint16_t distance = duration / 10; // Convert to millimeters
   logEvent("Distance read: " + String(distance) + " mm");
 
   return distance > 0 && distance < DIST_THRESHOLD_MM;
 }
 
-
+// ---------- Check if it's currently night ----------
 bool isNight() {
   logEvent("Checking light...");
   uint16_t lux = readLightRaw();
   logEvent("Ambient light (raw): " + String(lux) + " lux");
-  return lux < 5;
+  return lux < 5; // Low light threshold for night detection
 }
 
+// ---------- Check if it's rainy based on humidity ----------
 bool isRainy() {
   logEvent("Checking humidity...");
   float hum = dht.readHumidity();
   logEvent("Humidity: " + String(hum) + " %");
-  return hum > 50.0;
+  return hum > 50.0; // Humidity threshold for rain
 }
 
+// ---------- Send wake signal to slave node ----------
 void wakeSlave() {
   logEvent("Waking slave...");
   digitalWrite(WAKE_SLAVE_PIN, HIGH);
@@ -121,14 +130,16 @@ void wakeSlave() {
   logEvent("Wake signal sent to slave");
 }
 
+// ---------- Send current state to slave node ----------
 void sendStateToSlave(int state) {
   logEvent("Sending state to slave: " + String(state));
   wakeSlave();
-  delay(10);
+  delay(10); // Small delay before sending
   ss.println(state);
   logEvent("State sent to slave over SoftwareSerial");
 }
 
+// ---------- Apply lighting state locally ----------
 void applyState(int state) {
   logEvent("Applying state: " + String(state));
   switch (state) {
@@ -149,13 +160,16 @@ void applyState(int state) {
   }
 }
 
+// ---------- Main loop ----------
 void loop() {
   logEvent("Loop started");
 
+  // Read environmental and object detection data
   bool night = isNight();
   bool rainy = isRainy();
   bool carDetected = isObjectDetected();
 
+  // Decision-making: choose lighting state based on conditions
   int stateToSend;
   if (night || rainy) {
     stateToSend = carDetected ? STATE_ON : STATE_DIM;
@@ -168,9 +182,12 @@ void loop() {
            ", rainy: " + String(rainy) +
            ", car: " + String(carDetected));
 
+  // Send chosen state to slave node
   sendStateToSlave(stateToSend);
 
+  // Apply lighting state locally
   if (carDetected && stateToSend == STATE_ON) {
+    // Briefly turn on both LEDs, then dim for power saving
     applyState(STATE_ON);
     delay(1500);
     digitalWrite(LED_PIN1, HIGH);
@@ -180,10 +197,10 @@ void loop() {
     applyState(stateToSend);
   }
 
+  // Log current ambient light
   uint16_t lux = readLightRaw();
   Serial.println("Ambient light: " + String(lux) + " lux");
 
-
   logEvent("Loop finished\n");
-  delay(5000);
+  delay(5000); // Wait before next cycle
 }
