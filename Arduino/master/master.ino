@@ -25,22 +25,63 @@ SoftwareSerial ss(10, 11); // RX, TX for slave communication
 
 // Logs to calculate metrics
 unsigned long t_event_start, t_event_end;
-unsigned long t_decide_start, t_decide_end;
-unsigned long t_apply_start, t_apply_end;
 unsigned long t_comm_start, t_comm_end;
+unsigned long t_apply_start, t_apply_end;
 unsigned long total_latency = 0;
 unsigned long total_wakeup = 0;
 unsigned long total_mA = 0;  // Track current (simplified)
 int event_count = 0;
 
-// ---------- Initialize the AP3216 light sensor ----------
-void initAP3216() {
-  Wire.beginTransmission(0x1E);
-  Wire.write(0x00);   // Register: system configuration
-  Wire.write(0x03);   // Power ON, ALS+PS+IR active
-  Wire.endTransmission();
+unsigned long last_polling_time = 0;
+unsigned long polling_window_size = 0; // Window size of polling in milliseconds
 
-  delay(100);  // Allow sensor to stabilize
+// ================== Polling Window Size Calculation ==================
+// Dynamic calculation of polling window size 
+
+// Assumptions (These can be dynamically calculated or measured)
+float v_max = 0.25;   // Max object speed in m/s (can be adjusted based on system requirements)
+float L_zone = 0.25;  // Detection zone length in meters (can be dynamically measured if needed)
+
+// Time assumptions (these can be adjusted as well based on actual system performance)
+unsigned long t_read = 0;      // Time to read sensor (milliseconds) 
+unsigned long t_decide = 0;    // Time for CPU decision (milliseconds) 
+unsigned long t_apply = 0;     // Time to apply output (milliseconds)
+unsigned long t_ISR = 0;       // Worst-case interrupt delay (milliseconds)
+unsigned long t_margin = 15;   // Safety margin for jitter/noise (milliseconds)
+
+// Calculate the object presence time in the sensor's detection zone (t_obj)
+unsigned long t_obj = (L_zone / v_max) * 1000;  // in milliseconds
+
+// Calculate maximum polling window size (T_poll,max)
+unsigned long calculatePollingWindowSize() {
+  
+  // Calculate reading time dynamically (e.g., by measuring time to read the sensor)
+  unsigned long start_read = millis();
+  uint16_t lux = readLightRaw();
+  unsigned long end_read = millis();
+  t_read = end_read - start_read;  
+  
+  // Calculate decision time dynamically (e.g., time to decide based on logic)
+  unsigned long start_decision = millis();
+  int stateToSend = decideState();  
+  unsigned long end_decision = millis();
+  t_decide = end_decision - start_decision; 
+  
+  // Calculate apply time dynamically (e.g., time to apply the output to LEDs)
+  unsigned long start_apply = millis();
+  applyState(stateToSend); 
+  unsigned long end_apply = millis();
+  t_apply = end_apply - start_apply;  
+  
+  // Simulate interrupt delay (this would typically be measured in a real system)
+  unsigned long start_ISR = millis();
+  triggerISR(); 
+  unsigned long end_ISR = millis();
+  t_ISR = end_ISR - start_ISR;  
+
+  // Calculate polling window size based on dynamic values
+  unsigned long T_poll_max = t_obj - (t_read + t_decide + t_apply + t_ISR) - t_margin;
+  return T_poll_max;
 }
 
 // ---------- Logging helper function ----------
@@ -60,7 +101,6 @@ void setup() {
   logEvent("SoftwareSerial initialized");
 
   Wire.begin();    // Start I2C bus
-  initAP3216();
   logEvent("Wire initialized");
 
   // Configure I/O pins
@@ -94,66 +134,21 @@ uint16_t readLightRaw() {
   return lux;
 }
 
-// ---------- Check if an object (e.g., a car) is detected ----------
-bool isObjectDetected() {
-  logEvent("Checking distance...");
-
-  uint32_t timeout = 30000; // Timeout for pulseIn
-  unsigned long duration = pulseIn(DISTANCE_PIN, HIGH, timeout);
-
-  if (duration == 0) {
-    logEvent("Distance sensor timeout");
-    return false;
-  }
-
-  uint16_t distance = duration / 10; // Convert to millimeters
-  logEvent("Distance read: " + String(distance) + " mm");
-
-  return distance > 0 && distance < DIST_THRESHOLD_MM;
+// ---------- Simulate Decision Logic ----------
+int decideState() {
+  // Simulate decision-making logic
+  return STATE_ON;  // For simplicity, just returning STATE_ON
 }
 
-// ---------- Check if it's currently night ----------
-bool isNight() {
-  logEvent("Checking light...");
-  uint16_t lux = readLightRaw();
-  logEvent("Ambient light (raw): " + String(lux) + " lux");
-  return lux < 5; // Low light threshold for night detection
-}
-
-// ---------- Check if it's rainy based on humidity ----------
-bool isRainy() {
-  logEvent("Checking humidity...");
-  float hum = dht.readHumidity();
-  logEvent("Humidity: " + String(hum) + " %");
-  return hum > 50.0; // Humidity threshold for rain
-}
-
-// ---------- Send wake signal to slave node ----------
-void wakeSlave() {
-  logEvent("Waking slave...");
-  digitalWrite(WAKE_SLAVE_PIN, HIGH);
-  delay(50);
-  digitalWrite(WAKE_SLAVE_PIN, LOW);
-  logEvent("Wake signal sent to slave");
-}
-
-// ---------- Send current state to slave node ----------
-void sendStateToSlave(int state) {
-  t_comm_start = millis();
-  logEvent("Sending state to slave: " + String(state));
-  wakeSlave();
-  delay(10); // Small delay before sending
-  ss.println(state);
-  t_comm_end = millis();
-  total_latency += (t_comm_end - t_comm_start); // Log communication time
-  event_count++;
-  logEvent("State sent to slave over SoftwareSerial");
+// ---------- Simulate ISR trigger ----------
+void triggerISR() {
+  // Simulate an interrupt (no real effect in this context)
+  delay(1);  // Simulating the time it takes for ISR handling
 }
 
 // ---------- Apply lighting state locally ----------
 void applyState(int state) {
-  t_apply_start = millis();
-  logEvent("Applying state: " + String(state));
+  // Simulate applying the state to LEDs
   switch (state) {
     case STATE_OFF:
       digitalWrite(LED_PIN1, LOW);
@@ -170,14 +165,15 @@ void applyState(int state) {
     default:
       logEvent("Unknown state: " + String(state));
   }
-  t_apply_end = millis();
-  total_latency += (t_apply_end - t_apply_start); // Log LED apply time
-  logEvent("LED state applied.");
 }
 
 // ---------- Main loop ----------
 void loop() {
   t_event_start = millis();
+
+  // Calculate polling window size (using the formula)
+  unsigned long T_poll_max = calculatePollingWindowSize();
+  logEvent("Calculated Maximum Polling Window Size (T_poll,max): " + String(T_poll_max) + " ms");
 
   // Read environmental and object detection data
   bool night = isNight();
@@ -229,7 +225,7 @@ void loop() {
     total_mA = 0;
     event_count = 0;
   }
-  
+
   logEvent("Loop finished\n");
   delay(5000); // Wait before next cycle
 }
