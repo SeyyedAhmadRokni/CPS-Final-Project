@@ -23,6 +23,16 @@ SoftwareSerial ss(10, 11); // RX, TX for slave communication
 #define STATE_BLINK 2
 #define STATE_DIM 3
 
+// Logs to calculate metrics
+unsigned long t_event_start, t_event_end;
+unsigned long t_decide_start, t_decide_end;
+unsigned long t_apply_start, t_apply_end;
+unsigned long t_comm_start, t_comm_end;
+unsigned long total_latency = 0;
+unsigned long total_wakeup = 0;
+unsigned long total_mA = 0;  // Track current (simplified)
+int event_count = 0;
+
 // ---------- Initialize the AP3216 light sensor ----------
 void initAP3216() {
   Wire.beginTransmission(0x1E);
@@ -63,9 +73,6 @@ void setup() {
 
   dht.begin(); // Start DHT11 temperature/humidity sensor
   logEvent("DHT initialized");
-
-  // Skipped AP3216 built-in init() to avoid conflicts during debug
-  logEvent("Skipped light sensor init for debug");
 
   logEvent("Master Ready.");
   delay(500);
@@ -132,15 +139,20 @@ void wakeSlave() {
 
 // ---------- Send current state to slave node ----------
 void sendStateToSlave(int state) {
+  t_comm_start = millis();
   logEvent("Sending state to slave: " + String(state));
   wakeSlave();
   delay(10); // Small delay before sending
   ss.println(state);
+  t_comm_end = millis();
+  total_latency += (t_comm_end - t_comm_start); // Log communication time
+  event_count++;
   logEvent("State sent to slave over SoftwareSerial");
 }
 
 // ---------- Apply lighting state locally ----------
 void applyState(int state) {
+  t_apply_start = millis();
   logEvent("Applying state: " + String(state));
   switch (state) {
     case STATE_OFF:
@@ -158,11 +170,14 @@ void applyState(int state) {
     default:
       logEvent("Unknown state: " + String(state));
   }
+  t_apply_end = millis();
+  total_latency += (t_apply_end - t_apply_start); // Log LED apply time
+  logEvent("LED state applied.");
 }
 
 // ---------- Main loop ----------
 void loop() {
-  logEvent("Loop started");
+  t_event_start = millis();
 
   // Read environmental and object detection data
   bool night = isNight();
@@ -201,6 +216,20 @@ void loop() {
   uint16_t lux = readLightRaw();
   Serial.println("Ambient light: " + String(lux) + " lux");
 
+  t_event_end = millis();
+  total_latency += (t_event_end - t_event_start); // Log total event processing time
+  
+  // Log metrics every 10 events
+  if (event_count >= 10) {
+    logEvent("Average Latency (ms): " + String(total_latency / event_count));
+    logEvent("Wakeup Rate: " + String(total_wakeup / event_count) + " per second");
+    logEvent("Average mA: " + String(total_mA / event_count));
+    total_latency = 0;
+    total_wakeup = 0;
+    total_mA = 0;
+    event_count = 0;
+  }
+  
   logEvent("Loop finished\n");
   delay(5000); // Wait before next cycle
 }

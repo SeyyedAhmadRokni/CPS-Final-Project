@@ -29,6 +29,14 @@ volatile bool wakeFlag = false;  // Set by interrupt when WAKE_PIN is triggered
 int receivedState = STATE_OFF;   // Lighting state sent by the Master
 bool isAwake = false;            // Flag to track if the node is active
 
+// ===================== Metrics Logging =======================
+unsigned long t_wake_start, t_wake_end;
+unsigned long t_state_start, t_state_end;
+unsigned long total_latency = 0;
+unsigned long wakeup_count = 0;
+unsigned long total_mA = 0;  // Placeholder for current (mA)
+int event_count = 0;
+
 // ===================== Utility Functions =====================
 /**
  * @brief Logs a message with timestamp for debugging
@@ -44,53 +52,26 @@ void logEvent(String message) {
  * @brief Interrupt Service Routine to wake up the slave node
  */
 void wakeUpISR() {
+  t_wake_start = millis();
   wakeFlag = true;
+  wakeup_count++;
 }
 
-// ===================== Setup =====================
-void setup() {
-  Serial.begin(9600);  
-  ss.begin(9600);      
-
-  pinMode(LED_PIN1, OUTPUT);
-  pinMode(LED_PIN2, OUTPUT);
-  pinMode(WAKE_PIN, INPUT);
-  pinMode(WAKE_NEXT_NODE_PIN, OUTPUT);
-  digitalWrite(WAKE_NEXT_NODE_PIN, LOW);
-
-  // Attach interrupt to wake the node from sleep
-  attachInterrupt(digitalPinToInterrupt(WAKE_PIN), wakeUpISR, RISING);
-
-  // Initialize VL53L0X distance sensor
+/**
+ * @brief Initializes the VL53L0X distance sensor
+ */
+void initVL53L0X() {
   if (!lox.begin()) {
     logEvent("❌ Failed to initialize VL53L0X sensor");
     while (1); // Stop execution if sensor init fails
   }
-
-  // Ensure LEDs start OFF
-  digitalWrite(LED_PIN1, LOW);
-  digitalWrite(LED_PIN2, LOW);
-
-  logEvent("✅ Slave initialized and going to sleep...");
 }
 
-
-// ===================== Power Management =====================
 /**
- * @brief Puts the Arduino into idle sleep mode to save power
- */
-void goToSleep() {
-  set_sleep_mode(SLEEP_MODE_IDLE);
-  sleep_enable();
-  sleep_mode();    // MCU sleeps here until interrupt occurs
-  sleep_disable();
-}
-
-// ===================== Lighting Control =====================
-/**
- * @brief Sets LEDs according to a given lighting state
+ * @brief Apply state to LEDs and log the action
  */
 void applyState(int state) {
+  t_state_start = millis();
   switch (state) {
     case STATE_OFF:
       digitalWrite(LED_PIN1, LOW);
@@ -118,15 +99,30 @@ void applyState(int state) {
       logEvent("❓ Unknown state: " + String(state));
       break;
   }
+  t_state_end = millis();
+  total_latency += (t_state_end - t_state_start); // Log state application time
 }
 
+/**
+ * @brief Puts the Arduino into idle sleep mode to save power
+ */
+void goToSleep() {
+  set_sleep_mode(SLEEP_MODE_IDLE);
+  sleep_enable();
+  sleep_mode();    // MCU sleeps here until interrupt occurs
+  sleep_disable();
+}
 
 // ===================== Main Loop =====================
 void loop() {
   // If wake signal received from Master
   if (wakeFlag) {
     wakeFlag = false;
+    t_wake_end = millis();
     logEvent("🔔 Woken up by interrupt");
+
+    // Log wakeup time (latency)
+    total_latency += (t_wake_end - t_wake_start); 
 
     // Wait for state data from Master
     while (ss.available() == 0);
@@ -167,8 +163,7 @@ void loop() {
         applyState(receivedState);
         logEvent("↩️ Returned to previous state: " + String(receivedState));
       }
-    } 
-    else {
+    } else {
       logEvent("🚫 No object detected");
       applyState(receivedState); // Maintain assigned state
     }
@@ -180,4 +175,14 @@ void loop() {
 
   // Enter low-power idle mode
   goToSleep();
+
+  // Log metrics every 10 wakeups
+  if (wakeup_count >= 10) {
+    logEvent("Average Latency (ms): " + String(total_latency / wakeup_count));
+    logEvent("Wakeup Rate: " + String(wakeup_count / 10) + " per second");
+    logEvent("Average mA: " + String(total_mA / wakeup_count));
+    total_latency = 0;
+    wakeup_count = 0;
+    total_mA = 0;
+  }
 }
