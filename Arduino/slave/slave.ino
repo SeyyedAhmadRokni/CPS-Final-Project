@@ -7,6 +7,7 @@
 #define LED_PIN1 7                 
 #define LED_PIN2 8                 
 #define WAKE_PIN 2                 
+#define DISTANCE_PIN 5  
 #define WAKE_NEXT_NODE_PIN 6       
 
 #define SOFT_RX 11                 
@@ -28,6 +29,7 @@ int receivedState = STATE_OFF;   // Lighting state sent by the Master
 bool isAwake = false;            // Flag to track if the node is active
 
 // ===================== Metrics Logging =======================
+unsigned long t_sleep_enter = 0;
 unsigned long t_wake_start, t_wake_end;
 unsigned long t_state_start, t_state_end;
 unsigned long total_latency = 0;
@@ -85,30 +87,38 @@ void applyState(int state) {
 void goToSleep() {
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);
   sleep_enable();
+  t_sleep_enter = millis();
   sleep_mode();    // MCU sleeps here until interrupt occurs
   sleep_disable();
 }
 
 void wakeUpISR() {
-  t_wake_start = millis();
   wakeFlag = true;
   wakeup_count++;
 }
 
+bool isObjectDetected() {
+  if (digitalRead(DISTANCE_PIN) == LOW) { // فعال با فشردن دکمه
+    delay(20);                            // debounce
+    return digitalRead(DISTANCE_PIN) == LOW;
+  }
+  return false;
+}
+
 void setup() {
   Serial.begin(9600);
+  logEvent("Serial initialized");
+  ss.begin(9600);
+  logEvent("SoftwareSerial initialized");
   pinMode(LED_PIN1, OUTPUT);
   pinMode(LED_PIN2, OUTPUT);
-  pinMode(WAKE_PIN, INPUT);
+  pinMode(WAKE_PIN, INPUT_PULLUP);
   pinMode(WAKE_NEXT_NODE_PIN, OUTPUT);
-  digitalWrite(WAKE_NEXT_NODE_PIN, LOW);
+  // pinMode(DISTANCE_PIN, INPUT);
+  pinMode(DISTANCE_PIN, INPUT_PULLUP);
+  digitalWrite(WAKE_NEXT_NODE_PIN, HIGH);
+  attachInterrupt(digitalPinToInterrupt(WAKE_PIN), wakeUpISR, LOW);
 
-  attachInterrupt(digitalPinToInterrupt(WAKE_PIN), wakeUpISR, RISING);
-
-  if (!lox.begin()) {
-    logEvent("Failed to boot VL53L0X");
-    while (1);
-  }
 
   digitalWrite(LED_PIN1, LOW);
   digitalWrite(LED_PIN2, LOW);
@@ -124,48 +134,44 @@ void loop() {
     logEvent("🔔 Woken up by interrupt");
 
     // Log wakeup time (latency)
-    total_latency += (t_wake_end - t_wake_start); 
+    total_latency += (t_wake_end - t_sleep_enter);
 
     // Wait for state data from Master
-    while (ss.available() == 0);
-    receivedState = ss.readStringUntil('\n').toInt();
-    logEvent("📥 Received state: " + String(receivedState));
+    unsigned long deadline = millis() + 500; // 500ms timeout
+    while (ss.available() == 0 && millis() < deadline) { /* wait */ }
+
+    if (ss.available()) {
+      receivedState = ss.readStringUntil('\n').toInt();
+      logEvent("📥 Received state: " + String(receivedState));
+    } else {
+      logEvent("⏱️ Timeout waiting for state; keep last: " + String(receivedState));
+    }
 
     isAwake = true;
   }
 
   if (isAwake) {
     unsigned long startTime = millis();
-    bool objectDetected = false;
 
+  bool carDetected = false;
     while (millis() - startTime < 10000) { // حداکثر 10 ثانیه بیدار باشه
-        VL53L0X_RangingMeasurementData_t measure;
-        lox.rangingTest(&measure, false);
-
-        if (measure.RangeStatus != 4 && measure.RangeMilliMeter < 200) {
-            objectDetected = true;
-            break;
-        }
-        delay(50); // کمی تاخیر برای جلوگیری از فشار به CPU
-    }
-
-    if (objectDetected) {
-        // همان کاری که الان برای جسم انجام میدی
-        applyState(STATE_ON);
-        delay(500);
-        digitalWrite(WAKE_NEXT_NODE_PIN, HIGH);
-        delay(50);
-        digitalWrite(WAKE_NEXT_NODE_PIN, LOW);
-        logEvent("➡️ Sent wake signal to next node");
-        delay(1500);
-    } else {
-        logEvent("🚫 No object detected within timeout");
+      carDetected = isObjectDetected();
+      if (carDetected) {
+          applyState(STATE_ON);
+          delay(500);
+          digitalWrite(WAKE_NEXT_NODE_PIN, LOW);
+          delay(50);
+          digitalWrite(WAKE_NEXT_NODE_PIN, HIGH);
+          logEvent("➡️ Sent wake signal to next node");
+          delay(1500);
+          break;
+      }
     }
 
     applyState(receivedState);
     logEvent("↩️ Returned to previous state");
     isAwake = false;
-}
+  }
 
   goToSleep();
 

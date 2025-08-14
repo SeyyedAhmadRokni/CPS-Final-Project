@@ -97,10 +97,11 @@ uint16_t readLightRaw() {
 
 //simulation
 bool isObjectDetected() {
-  // دکمه به DISTANCE_PIN وصل شده
-  // از INPUT_PULLUP استفاده می‌کنیم که وقتی دکمه رهاست، مقدار HIGH بده
-  // و وقتی فشار بدی، LOW بشه
-  return digitalRead(DISTANCE_PIN) == LOW;
+  if (digitalRead(DISTANCE_PIN) == LOW) { // فعال با فشردن دکمه
+    delay(20);                            // debounce
+    return digitalRead(DISTANCE_PIN) == LOW;
+  }
+  return false;
 }
 
 bool isNight() {
@@ -123,6 +124,18 @@ void wakeSlave() {
   delay(50);
   digitalWrite(WAKE_SLAVE_PIN, LOW);
   logEvent("Wake signal sent to slave");
+}
+
+int decideState() {
+  bool night = isNight();
+  bool rainy = isRainy();
+  bool carDetected = isObjectDetected();
+  if (night || rainy) return carDetected ? STATE_ON : STATE_DIM;
+  return STATE_OFF;
+}
+
+void triggerISR() {
+  // فقط شبیه‌سازی: هیچ کاری نمی‌کند
 }
 
 
@@ -192,8 +205,8 @@ void setup() {
   pinMode(LED_PIN2, OUTPUT);
   pinMode(WAKE_SLAVE_PIN, OUTPUT);
   digitalWrite(WAKE_SLAVE_PIN, LOW);
-  pinMode(DISTANCE_PIN, INPUT);
-  // pinMode(DISTANCE_PIN, INPUT_PULLUP);
+  // pinMode(DISTANCE_PIN, INPUT);
+  pinMode(DISTANCE_PIN, INPUT_PULLUP);
   logEvent("Pin modes set");
 
   dht.begin(); 
