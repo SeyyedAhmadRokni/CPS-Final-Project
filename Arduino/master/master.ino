@@ -53,40 +53,55 @@ unsigned long t_obj = (L_zone / v_max) * 1000;  // in milliseconds
 
 
 
+//real
+// uint16_t readLightRaw() {
+//   Wire.beginTransmission(0x1E);
+//   Wire.write(0x0C);
+//   Wire.endTransmission();
 
-// ---------- Read raw ambient light value from AP3216 ----------
+//   Wire.requestFrom(0x1E, 2);
+//   if (Wire.available() < 2) return 0;
+
+//   uint8_t low = Wire.read();
+//   uint8_t high = Wire.read();
+
+//   uint16_t lux = ((uint16_t)high << 8) | low;
+//   return lux;
+// }
+
+//real
+// bool isObjectDetected() {
+//   logEvent("Checking distance...");
+
+//   uint32_t timeout = 30000; // Timeout for pulseIn
+//   unsigned long duration = pulseIn(DISTANCE_PIN, HIGH, timeout);
+
+//   if (duration == 0) {
+//     logEvent("Distance sensor timeout");
+//     return false;
+//   }
+
+//   uint16_t distance = duration / 10; // Convert to millimeters
+//   logEvent("Distance read: " + String(distance) + " mm");
+
+//   return distance > 0 && distance < DIST_THRESHOLD_MM;
+// }
+
+//simulation
 uint16_t readLightRaw() {
-  Wire.beginTransmission(0x1E);
-  Wire.write(0x0C);
-  Wire.endTransmission();
-
-  Wire.requestFrom(0x1E, 2);
-  if (Wire.available() < 2) return 0;
-
-  uint8_t low = Wire.read();
-  uint8_t high = Wire.read();
-
-  uint16_t lux = ((uint16_t)high << 8) | low;
+  int analogValue = analogRead(A0);  // مقدار بین 0 تا 1023
+  // تبدیل به lux فرضی (0 تا 1000)
+  uint16_t lux = map(analogValue, 0, 1023, 0, 1000);
   return lux;
 }
 
+//simulation
 bool isObjectDetected() {
-  logEvent("Checking distance...");
-
-  uint32_t timeout = 30000; // Timeout for pulseIn
-  unsigned long duration = pulseIn(DISTANCE_PIN, HIGH, timeout);
-
-  if (duration == 0) {
-    logEvent("Distance sensor timeout");
-    return false;
-  }
-
-  uint16_t distance = duration / 10; // Convert to millimeters
-  logEvent("Distance read: " + String(distance) + " mm");
-
-  return distance > 0 && distance < DIST_THRESHOLD_MM;
+  // دکمه به DISTANCE_PIN وصل شده
+  // از INPUT_PULLUP استفاده می‌کنیم که وقتی دکمه رهاست، مقدار HIGH بده
+  // و وقتی فشار بدی، LOW بشه
+  return digitalRead(DISTANCE_PIN) == LOW;
 }
-
 
 bool isNight() {
   logEvent("Checking light...");
@@ -175,9 +190,10 @@ void setup() {
   // Configure I/O pins
   pinMode(LED_PIN1, OUTPUT);
   pinMode(LED_PIN2, OUTPUT);
-  pinMode(DISTANCE_PIN, INPUT);
   pinMode(WAKE_SLAVE_PIN, OUTPUT);
   digitalWrite(WAKE_SLAVE_PIN, LOW);
+  pinMode(DISTANCE_PIN, INPUT);
+  // pinMode(DISTANCE_PIN, INPUT_PULLUP);
   logEvent("Pin modes set");
 
   dht.begin(); 
