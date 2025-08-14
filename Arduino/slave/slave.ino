@@ -4,16 +4,15 @@
 #include <SoftwareSerial.h>
 
 // ===================== Pin Configuration =====================
-#define LED_PIN1 7                 // First LED output pin
-#define LED_PIN2 8                 // Second LED output pin
-#define WAKE_PIN 2                 // Pin used to wake this slave via interrupt
-#define WAKE_NEXT_NODE_PIN 6       // Pin to send wake signal to the next node in the chain
+#define LED_PIN1 7                 
+#define LED_PIN2 8                 
+#define WAKE_PIN 2                 
+#define WAKE_NEXT_NODE_PIN 6       
 
-#define SOFT_RX 11                 // SoftwareSerial RX pin
-#define SOFT_TX 10                 // SoftwareSerial TX pin
+#define SOFT_RX 11                 
+#define SOFT_TX 10                 
 
-// ===================== Communication =========================
-SoftwareSerial ss(SOFT_RX, SOFT_TX); // Serial interface for receiving state from Master
+SoftwareSerial ss(SOFT_RX, SOFT_TX); 
 
 // ===================== Lighting States =======================
 #define STATE_OFF 0
@@ -21,8 +20,7 @@ SoftwareSerial ss(SOFT_RX, SOFT_TX); // Serial interface for receiving state fro
 #define STATE_BLINK 2
 #define STATE_DIM 3
 
-// ===================== Sensor Object =========================
-Adafruit_VL53L0X lox = Adafruit_VL53L0X(); // ToF distance sensor object
+Adafruit_VL53L0X lox = Adafruit_VL53L0X(); 
 
 // ===================== State Variables =======================
 volatile bool wakeFlag = false;  // Set by interrupt when WAKE_PIN is triggered
@@ -37,10 +35,6 @@ unsigned long wakeup_count = 0;
 unsigned long total_mA = 0;  // Placeholder for current (mA)
 int event_count = 0;
 
-// ===================== Utility Functions =====================
-/**
- * @brief Logs a message with timestamp for debugging
- */
 void logEvent(String message) {
   Serial.print("[LOG @ ");
   Serial.print(millis());
@@ -48,18 +42,6 @@ void logEvent(String message) {
   Serial.println(message);
 }
 
-/**
- * @brief Interrupt Service Routine to wake up the slave node
- */
-void wakeUpISR() {
-  t_wake_start = millis();
-  wakeFlag = true;
-  wakeup_count++;
-}
-
-/**
- * @brief Initializes the VL53L0X distance sensor
- */
 void initVL53L0X() {
   if (!lox.begin()) {
     logEvent("❌ Failed to initialize VL53L0X sensor");
@@ -67,9 +49,6 @@ void initVL53L0X() {
   }
 }
 
-/**
- * @brief Apply state to LEDs and log the action
- */
 void applyState(int state) {
   t_state_start = millis();
   switch (state) {
@@ -103,19 +82,42 @@ void applyState(int state) {
   total_latency += (t_state_end - t_state_start); // Log state application time
 }
 
-/**
- * @brief Puts the Arduino into idle sleep mode to save power
- */
 void goToSleep() {
-  set_sleep_mode(SLEEP_MODE_IDLE);
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
   sleep_enable();
   sleep_mode();    // MCU sleeps here until interrupt occurs
   sleep_disable();
 }
 
-// ===================== Main Loop =====================
+void wakeUpISR() {
+  t_wake_start = millis();
+  wakeFlag = true;
+  wakeup_count++;
+}
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(LED_PIN1, OUTPUT);
+  pinMode(LED_PIN2, OUTPUT);
+  pinMode(WAKE_PIN, INPUT);
+  pinMode(WAKE_NEXT_NODE_PIN, OUTPUT);
+  digitalWrite(WAKE_NEXT_NODE_PIN, LOW);
+
+  attachInterrupt(digitalPinToInterrupt(WAKE_PIN), wakeUpISR, RISING);
+
+  if (!lox.begin()) {
+    logEvent("Failed to boot VL53L0X");
+    while (1);
+  }
+
+  digitalWrite(LED_PIN1, LOW);
+  digitalWrite(LED_PIN2, LOW);
+
+  logEvent("Slave ready and sleeping...");
+}
+
+
 void loop() {
-  // If wake signal received from Master
   if (wakeFlag) {
     wakeFlag = false;
     t_wake_end = millis();
@@ -132,51 +134,41 @@ void loop() {
     isAwake = true;
   }
 
-  // If node is awake, check surroundings
   if (isAwake) {
-    VL53L0X_RangingMeasurementData_t measure;
-    lox.rangingTest(&measure, false); // Read distance
+    unsigned long startTime = millis();
+    bool objectDetected = false;
 
-    // If valid reading and object detected within 200 mm
-    if (measure.RangeStatus != 4 && measure.RangeMilliMeter < 200) {
-      logEvent("📏 Object detected at " + String(measure.RangeMilliMeter) + " mm");
+    while (millis() - startTime < 10000) { // حداکثر 10 ثانیه بیدار باشه
+        VL53L0X_RangingMeasurementData_t measure;
+        lox.rangingTest(&measure, false);
 
-      // Turn LEDs to full brightness temporarily
-      applyState(STATE_ON);
-      delay(500);
-
-      // Wake the next node in the network
-      digitalWrite(WAKE_NEXT_NODE_PIN, HIGH);
-      delay(50);
-      digitalWrite(WAKE_NEXT_NODE_PIN, LOW);
-      logEvent("➡️ Sent wake signal to next node");
-
-      // Maintain high brightness for a while
-      delay(1500);  
-
-      // Return to received state after detection
-      if (receivedState == STATE_ON) {
-        digitalWrite(LED_PIN1, HIGH);
-        digitalWrite(LED_PIN2, LOW);
-        logEvent("💡 Reduced brightness: LED1 ON, LED2 OFF");
-      } else {
-        applyState(receivedState);
-        logEvent("↩️ Returned to previous state: " + String(receivedState));
-      }
-    } else {
-      logEvent("🚫 No object detected");
-      applyState(receivedState); // Maintain assigned state
+        if (measure.RangeStatus != 4 && measure.RangeMilliMeter < 200) {
+            objectDetected = true;
+            break;
+        }
+        delay(50); // کمی تاخیر برای جلوگیری از فشار به CPU
     }
 
-    // Go back to sleep after action
-    isAwake = false;
-    logEvent("😴 Going back to sleep...");
-  }
+    if (objectDetected) {
+        // همان کاری که الان برای جسم انجام میدی
+        applyState(STATE_ON);
+        delay(500);
+        digitalWrite(WAKE_NEXT_NODE_PIN, HIGH);
+        delay(50);
+        digitalWrite(WAKE_NEXT_NODE_PIN, LOW);
+        logEvent("➡️ Sent wake signal to next node");
+        delay(1500);
+    } else {
+        logEvent("🚫 No object detected within timeout");
+    }
 
-  // Enter low-power idle mode
+    applyState(receivedState);
+    logEvent("↩️ Returned to previous state");
+    isAwake = false;
+}
+
   goToSleep();
 
-  // Log metrics every 10 wakeups
   if (wakeup_count >= 10) {
     logEvent("Average Latency (ms): " + String(total_latency / wakeup_count));
     logEvent("Wakeup Rate: " + String(wakeup_count / 10) + " per second");
