@@ -11,10 +11,14 @@
 #define DISTANCE_PIN 5         
 #define WAKE_SLAVE_PIN 6       
 #define DIST_THRESHOLD_MM 1000 // Max detection distance in millimeters
+#define SOFT_TX 11                 
+#define SOFT_RX 10                 
+
 
 DHT dht(DHTPIN, DHTTYPE);
-AP3216_WE lightSensor = AP3216_WE(0x1E); 
-SoftwareSerial ss(10, 11); // RX, TX for slave communication
+AP3216_WE lightSensor = AP3216_WE(0x1E);
+
+SoftwareSerial ss(SOFT_RX, SOFT_TX);
 
 // Lighting states
 #define STATE_OFF 0
@@ -89,16 +93,15 @@ unsigned long t_obj = (L_zone / v_max) * 1000;  // in milliseconds
 
 //simulation
 uint16_t readLightRaw() {
-  int analogValue = analogRead(A0);  // مقدار بین 0 تا 1023
-  // تبدیل به lux فرضی (0 تا 1000)
+  int analogValue = analogRead(A0);
   uint16_t lux = map(analogValue, 0, 1023, 0, 1000);
   return lux;
 }
 
 //simulation
 bool isObjectDetected() {
-  if (digitalRead(DISTANCE_PIN) == LOW) { // فعال با فشردن دکمه
-    delay(20);                            // debounce
+  if (digitalRead(DISTANCE_PIN) == LOW) { 
+    delay(20);
     return digitalRead(DISTANCE_PIN) == LOW;
   }
   return false;
@@ -143,7 +146,7 @@ void sendStateToSlave(int state) {
   t_comm_start = millis();
   logEvent("Sending state to slave: " + String(state));
   wakeSlave();
-  delay(10); // Small delay before sending
+  delay(50); // Small delay before sending
   ss.println(state);
   t_comm_end = millis();
   total_latency += (t_comm_end - t_comm_start); // Log communication time

@@ -10,8 +10,8 @@
 #define DISTANCE_PIN 5  
 #define WAKE_NEXT_NODE_PIN 6       
 
-#define SOFT_RX 11                 
-#define SOFT_TX 10                 
+#define SOFT_TX 11                 
+#define SOFT_RX 10                 
 
 SoftwareSerial ss(SOFT_RX, SOFT_TX); 
 
@@ -140,13 +140,17 @@ void loop() {
     unsigned long deadline = millis() + 500; // 500ms timeout
     while (ss.available() == 0 && millis() < deadline) { /* wait */ }
 
-    if (ss.available()) {
-      receivedState = ss.readStringUntil('\n').toInt();
-      logEvent("📥 Received state: " + String(receivedState));
-    } else {
-      logEvent("⏱️ Timeout waiting for state; keep last: " + String(receivedState));
-    }
+    // if (ss.available()) {
+    //   receivedState = ss.parseInt();
+    //   logEvent("Received state: " + String(receivedState));
+    // } else {
+    //   logEvent("Timeout waiting for state; keep last: " + String(receivedState));
+    // }
 
+    ss.setTimeout(1000);  // ۱ ثانیه صبر می‌کنه تا داده بیاد
+    receivedState = ss.parseInt();
+    logEvent("📥 Received state: " + String(receivedState));
+    
     isAwake = true;
   }
 
@@ -162,7 +166,7 @@ void loop() {
           digitalWrite(WAKE_NEXT_NODE_PIN, LOW);
           delay(50);
           digitalWrite(WAKE_NEXT_NODE_PIN, HIGH);
-          logEvent("➡️ Sent wake signal to next node");
+          logEvent("Sent wake signal to next node");
           delay(1500);
           break;
       }
