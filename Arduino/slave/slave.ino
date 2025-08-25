@@ -24,6 +24,7 @@ void setup() {
   Serial.println("Slave ready (2-bit mode).");
 }
 
+
 void loop() {
   // 1. دریافت عدد ۲ بیتی (بین 0 تا 3) از برد قبلی
   while (Serial.available()) {
