@@ -22,7 +22,6 @@ bool isAwake = false;            // Flag to track if the node is active
 // ===================== Metrics Logging =======================
 unsigned long t_sleep_enter = 0;
 unsigned long t_wake_start, t_wake_end;
-unsigned long t_state_start, t_state_end;
 unsigned long total_latency = 0;
 unsigned long wakeup_count = 0;
 unsigned long total_mA = 0;  // Placeholder for current (mA)
@@ -36,19 +35,13 @@ void logEvent(String message) {
 }
 
 void applyLED1(bool on) {
-  t_state_start = millis();
   digitalWrite(LED_PIN1, on ? HIGH : LOW);
   logEvent(on ? "🌙 LED1 ON (DIM mode)" : "🔌 LED1 OFF");
-  t_state_end = millis();
-  total_latency += (t_state_end - t_state_start);
 }
 
 void applyLED2(bool on) {
-  t_state_start = millis();
   digitalWrite(LED_PIN2, on ? HIGH : LOW);
   logEvent(on ? "💡 LED2 ON (Car mode)" : "⏹️ LED2 OFF");
-  t_state_end = millis();
-  total_latency += (t_state_end - t_state_start);
 }
 
 void goToSleep() {
@@ -89,10 +82,13 @@ void sendCommandToNext(char cmd) {
 
 void wakeNext() {
   logEvent("🔔 Waking next slave...");
-  digitalWrite(WAKE_NEXT_NODE_PIN, HIGH);
-  delay(100);  // Increased for reliability
-  digitalWrite(WAKE_NEXT_NODE_PIN, LOW);
-  logEvent("Wake signal sent, WAKE_NEXT_NODE_PIN state: " + String(digitalRead(WAKE_NEXT_NODE_PIN)));
+  digitalWrite(WAKE_NEXT_NODE_PIN, LOW);  // LOW level for next slave
+  logEvent("Wake signal sent (LOW level), WAKE_NEXT_NODE_PIN state: " + String(digitalRead(WAKE_NEXT_NODE_PIN)));
+}
+
+void endWakeNext() {
+  digitalWrite(WAKE_NEXT_NODE_PIN, HIGH);  // Reset to HIGH
+  logEvent("Wake signal ended for next (back to HIGH)");
 }
 
 void setup() {
@@ -105,14 +101,13 @@ void setup() {
   pinMode(WAKE_PIN, INPUT_PULLUP);
   pinMode(WAKE_NEXT_NODE_PIN, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
-  digitalWrite(WAKE_NEXT_NODE_PIN, LOW);
+  digitalWrite(WAKE_NEXT_NODE_PIN, HIGH);  // Initial HIGH
   digitalWrite(LED_PIN1, LOW);
   digitalWrite(LED_PIN2, LOW);
   logEvent("Pin modes set: WAKE_PIN state = " + String(digitalRead(WAKE_PIN)));
 
-  // Test interrupt setup
   logEvent("Testing interrupt setup...");
-  attachInterrupt(digitalPinToInterrupt(WAKE_PIN), wakeUpISR, FALLING);  // Trigger on FALLING edge
+  attachInterrupt(digitalPinToInterrupt(WAKE_PIN), wakeUpISR, LOW);  // Changed to LOW for power-down mode
   logEvent("Interrupt attached, initial WAKE_PIN state: " + String(digitalRead(WAKE_PIN)));
 
   logEvent("Slave ready and entering sleep...");
@@ -127,10 +122,10 @@ void loop() {
     total_latency += (t_wake_end - t_sleep_enter);
     isAwake = true;
 
-    // Wait for command from previous node (increased timeout)
+    // Wait for command from previous node
     unsigned long startWait = millis();
     logEvent("Waiting for command, initial SOFT_RX state: " + String(digitalRead(SOFT_RX)));
-    while (!ss.available() && (millis() - startWait < 4000)) {  // Increased to 4000ms
+    while (!ss.available() && (millis() - startWait < 4000)) {
       delay(10);
     }
 
@@ -146,10 +141,11 @@ void loop() {
     if (receivedCommand == '1') {  // Propagate LED1 ON (night/rain)
       applyLED1(true);
       wakeNext();
-      delay(100);  // Ensure next wakes
+      delay(100);
       sendCommandToNext('1');
-      delay(100);  // Ensure next receives
-      isAwake = false;  // Prepare to sleep after processing
+      delay(100);
+      endWakeNext();
+      isAwake = false;
 
     } else if (receivedCommand == '0') {  // Propagate LED1 OFF (day/no rain)
       applyLED1(false);
@@ -157,7 +153,8 @@ void loop() {
       delay(100);
       sendCommandToNext('0');
       delay(100);
-      isAwake = false;  // Prepare to sleep after processing
+      endWakeNext();
+      isAwake = false;
 
     } else if (receivedCommand == '2') {  // Car detection mode: Turn on LED2, wait for button
       applyLED2(true);
@@ -171,10 +168,11 @@ void loop() {
           sendCommandToNext('2');
           delay(2000);  // Wait 2 seconds
           applyLED2(false);
+          endWakeNext();
         }
-        delay(10);  // Polling delay to reduce CPU usage
+        delay(10);
       }
-      isAwake = false;  // Prepare to sleep after handling car
+      isAwake = false;
 
     } else {
       logEvent("❓ Invalid command received: " + String(receivedCommand));
