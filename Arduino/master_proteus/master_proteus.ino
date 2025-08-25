@@ -81,11 +81,14 @@ bool isButtonPressed() {
 
 void wakeSlave() {
   logEvent("Waking slave...");
-  digitalWrite(WAKE_SLAVE_PIN, HIGH);
-  delay(100);  // Increased duration for reliable wake-up
-  digitalWrite(WAKE_SLAVE_PIN, LOW);
-  logEvent("Wake signal sent to slave, WAKE_SLAVE_PIN state: " + String(digitalRead(WAKE_SLAVE_PIN)));
+  digitalWrite(WAKE_SLAVE_PIN, LOW);  // Set to LOW and keep it low for LOW level interrupt
+  logEvent("Wake signal sent (LOW level), WAKE_SLAVE_PIN state: " + String(digitalRead(WAKE_SLAVE_PIN)));
   total_wakeup++;
+}
+
+void endWakeSlave() {
+  digitalWrite(WAKE_SLAVE_PIN, HIGH);  // Reset to HIGH after command is sent
+  logEvent("Wake signal ended (back to HIGH)");
 }
 
 void sendCommandToSlave(char cmd) {
@@ -93,11 +96,13 @@ void sendCommandToSlave(char cmd) {
   logEvent("Sending command to slave: " + String(cmd));
   for (int i = 0; i < 3; i++) {  // Retry up to 3 times
     wakeSlave();
-    delay(100);  // Increased delay to ensure slave is ready
+    delay(200);  // Give time for slave to wake and prepare
     ss.print(cmd);
     ss.flush();  // Ensure data is sent
-    delay(50);   // Wait for transmission
+    delay(100);   // Wait for transmission
     logEvent("Command attempt " + String(i + 1) + ": " + String(cmd));
+    endWakeSlave();
+    delay(100);  // Short delay between retries
   }
   t_comm_end = millis();
   total_latency += (t_comm_end - t_comm_start);
@@ -166,7 +171,7 @@ void setup() {
   pinMode(LED_PIN1, OUTPUT);
   pinMode(LED_PIN2, OUTPUT);
   pinMode(WAKE_SLAVE_PIN, OUTPUT);
-  digitalWrite(WAKE_SLAVE_PIN, LOW);
+  digitalWrite(WAKE_SLAVE_PIN, HIGH);  // Initial HIGH for LOW level interrupt
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(LIGHT_PIN, INPUT);
   logEvent("Pin modes set");
@@ -174,9 +179,10 @@ void setup() {
   dht.begin(); 
   logEvent("DHT initialized");
 
+  logEvent("Master starting, waiting 10 seconds for slaves to initialize...");
+  delay(10000); // Wait 10 seconds for slaves to start
+
   logEvent("Master Ready.");
-  // delay(10000);
-  delay(500);
 }
 
 void loop() {
