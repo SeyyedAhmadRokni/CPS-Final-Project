@@ -25,10 +25,8 @@ unsigned long total_latency = 0;
 unsigned long total_wakeup = 0;
 unsigned long total_mA = 0;  // Track current (simplified)
 int event_count = 0;
-
 unsigned long last_polling_time = 0;
 unsigned long polling_window_size = 0; // Window size of polling in milliseconds
-
 // ================== Polling Window Size Calculation ==================
 float v_max = 0.25;   // Max object speed in m/s
 float L_zone = 0.25;  // Detection zone length in meters
