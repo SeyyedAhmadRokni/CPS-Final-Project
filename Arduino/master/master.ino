@@ -76,7 +76,7 @@ bool isRainy() {
 }
 bool isObjectDetected() {
     logEvent("Checking distance...");
-    uint16_t duration = pulseIn(DISTANCE_PIN, HIGH);
+    uint16_t duration = pulseIn(DISTANCE_PIN, HIGH, 60000);
     if (duration == 0) {
         logEvent("Distance sensor timeout");
         return false;
