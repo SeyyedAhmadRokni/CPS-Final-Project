@@ -160,10 +160,11 @@ void loop()
         { // Propagate LED1 ON (night/rain)
             applyLED1(true);
             wakeNext();
+            delay(20);
+            endWakeNext();
             delay(300); // Increased delay
             sendCommandToNext('1');
             delay(100);
-            endWakeNext();
             isAwake = false;
         }
         else if (receivedCommand == '0')

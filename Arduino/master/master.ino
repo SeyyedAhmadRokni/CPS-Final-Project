@@ -98,16 +98,16 @@ void endWakeSlave() {
 void sendCommandToSlave(char cmd) {
     t_comm_start = millis();
     logEvent("Sending command to slave: " + String(cmd));
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 1; i++)
     { // Retry up to 3 times
         wakeSlave();
-        delay(300); // Increased delay for slave to fully wake and prepare Serial
-        logEvent("SOFT_TX state before send: " + String(digitalRead(SOFT_TX)));
+        delay(20); // Increased delay for slave to fully wake and prepare Serial
+        endWakeSlave();
+        //logEvent("SOFT_TX state before send: " + String(digitalRead(SOFT_TX)));
         ss.print(cmd);
         ss.flush(); // Ensure data is sent
         delay(100); // Wait for transmission
         logEvent("Command attempt " + String(i + 1) + ": " + String(cmd));
-        endWakeSlave();
         delay(200); // Delay between retries
     }
     t_comm_end = millis();
