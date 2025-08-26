@@ -90,25 +90,24 @@ void wakeSlave() {
     digitalWrite(WAKE_SLAVE_PIN, LOW); // Set to LOW and keep it low for LOW level interrupt
     logEvent("Wake signal sent (LOW level), WAKE_SLAVE_PIN state: " + String(digitalRead(WAKE_SLAVE_PIN)));
     total_wakeup++;
-}
-void endWakeSlave() {
+    delay(10);
     digitalWrite(WAKE_SLAVE_PIN, HIGH); // Reset to HIGH after command is sent
     logEvent("Wake signal ended (back to HIGH)");
 }
+
 void sendCommandToSlave(char cmd) {
     t_comm_start = millis();
     logEvent("Sending command to slave: " + String(cmd));
     for (int i = 0; i < 1; i++)
     { // Retry up to 3 times
         wakeSlave();
-        delay(20); // Increased delay for slave to fully wake and prepare Serial
-        endWakeSlave();
         //logEvent("SOFT_TX state before send: " + String(digitalRead(SOFT_TX)));
         ss.print(cmd);
+        delay(1);
         ss.flush(); // Ensure data is sent
-        delay(100); // Wait for transmission
+        delay(25); // Wait for transmission
         logEvent("Command attempt " + String(i + 1) + ": " + String(cmd));
-        delay(200); // Delay between retries
+        // delay(200); // Delay between retries
     }
     t_comm_end = millis();
     total_latency += (t_comm_end - t_comm_start);
@@ -155,7 +154,7 @@ void initAP3216() {
   Wire.write(0x03);      // فعال کردن ALS + PS + IR
   Wire.endTransmission();
 
-  delay(100);  // فرصت راه‌اندازی به سنسور بده
+  delay(25);  // فرصت راه‌اندازی به سنسور بده
 }
 void setup() {
     Serial.begin(9600);
@@ -195,7 +194,7 @@ void loop() {
     }
     else if (!isActive && wasActive) {
         applyLED1(false);
-        sendCommandToSlave('0');
+        sendCommandToSlave('3');
         logEvent("Deactivated night/rain mode, propagated to slaves");
     }
     wasActive = isActive;

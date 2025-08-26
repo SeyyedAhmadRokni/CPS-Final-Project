@@ -83,8 +83,9 @@ void sendCommandToNext(char cmd)
 {
     logEvent("Sending command to next slave: " + String(cmd));
     ss.print(cmd);
+    delay(2); // Ensure transmission
     ss.flush();
-    delay(50); // Ensure transmission
+    delay(25); // Ensure transmission
 }
 
 void wakeNext()
@@ -92,10 +93,7 @@ void wakeNext()
     logEvent("Waking next slave...");
     digitalWrite(WAKE_NEXT_NODE_PIN, LOW); // LOW level for next slave
     logEvent("Wake signal sent (LOW level), WAKE_NEXT_NODE_PIN state: " + String(digitalRead(WAKE_NEXT_NODE_PIN)));
-}
-
-void endWakeNext()
-{
+    delay(10);
     digitalWrite(WAKE_NEXT_NODE_PIN, HIGH); // Reset to HIGH
     logEvent("Wake signal ended for next (back to HIGH)");
 }
@@ -160,22 +158,18 @@ void loop()
         { // Propagate LED1 ON (night/rain)
             applyLED1(true);
             wakeNext();
-            delay(20);
-            endWakeNext();
-            delay(300); // Increased delay
+            delay(10); // Increased delay
             sendCommandToNext('1');
-            delay(100);
+            delay(25);
             isAwake = false;
         }
-        else if (receivedCommand == '0')
+        else if (receivedCommand == '3')
         { // Propagate LED1 OFF (day/no rain)
             applyLED1(false);
             wakeNext();
-            delay(20);
-            endWakeNext();
-            delay(300);
-            sendCommandToNext('0');
-            delay(100);
+            delay(10); // Increased delay
+            sendCommandToNext('3');
+            delay(25);
             isAwake = false;
         }
         else if (receivedCommand == '2')
@@ -187,9 +181,7 @@ void loop()
                 if (isObjectDetected())
                 {
                     wakeNext();
-                    delay(20);
-                    endWakeNext();
-                    delay(300);
+                    delay(10); // Increased delay
                     sendCommandToNext('2');
                     delay(2000); // Wait 2 seconds
                     applyLED2(false);
@@ -201,8 +193,10 @@ void loop()
         }
         else
         {
+            isAwake = false;
             logEvent("Invalid command received: " + String(receivedCommand));
         }
+
 
         event_count++;
         if (event_count >= 10)
@@ -213,6 +207,7 @@ void loop()
             event_count = 0;
             wakeup_count = 0;
         }
+        receivedCommand = ' ';
     }
 
     // Sleep if not awake
