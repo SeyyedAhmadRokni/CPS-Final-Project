@@ -15,7 +15,6 @@
 #define DIST_THRESHOLD_MM 1000 
 
 SoftwareSerial ss(SOFT_RX, SOFT_TX);
-Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 
 volatile bool wakeFlag = false; // Set by interrupt when WAKE_PIN is triggered
 char receivedCommand = ' ';     // Command sent by the previous node ('0', '1', '2')
