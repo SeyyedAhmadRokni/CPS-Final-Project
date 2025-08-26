@@ -14,9 +14,8 @@
 #define DIST_THRESHOLD_MM 1000 // Max detection distance in millimeters
 #define SOFT_TX 11
 #define SOFT_RX 10
+#define AP3216_ADDR 0x1E  
 DHT dht(DHTPIN, DHTTYPE);
-AP3216_WE lightSensor = AP3216_WE(0x1E);
-Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 
 SoftwareSerial ss(SOFT_RX, SOFT_TX);
 // Logs to calculate metrics
@@ -45,12 +44,14 @@ bool isActive = false;  // Current night/rain state
 
 uint16_t readLightRaw()
 {
-    Wire.beginTransmission(0x1E);
+    Wire.beginTransmission(AP3216_ADDR);
     Wire.write(0x0C);
     Wire.endTransmission();
-    Wire.requestFrom(0x1E, 2);
+
+    Wire.requestFrom(AP3216_ADDR, 2);
     if (Wire.available() < 2)
         return 0;
+    
     uint8_t low = Wire.read();
     uint8_t high = Wire.read();
     uint16_t lux = ((uint16_t)high << 8) | low;
@@ -149,7 +150,7 @@ void applyLED2(bool on) {
     logEvent(on ? "Master LED2 ON (car)" : "⏹️ Master LED2 OFF");
 }
 void initAP3216() {
-  Wire.beginTransmission(0x1E);
+  Wire.beginTransmission(AP3216_ADDR);
   Wire.write(0x00);      // رجیستر کنترل
   Wire.write(0x03);      // فعال کردن ALS + PS + IR
   Wire.endTransmission();
