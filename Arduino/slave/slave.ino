@@ -126,65 +126,62 @@ void setup() {
   logEvent("Slave ready and sleeping...");
 }
 
-
 void loop() {
+  // اگر interrupt رخ داده
   if (wakeFlag) {
     wakeFlag = false;
     t_wake_end = millis();
     logEvent("🔔 Woken up by interrupt");
 
-    // Log wakeup time (latency)
     total_latency += (t_wake_end - t_sleep_enter);
 
-    // Wait for state data from Master
-    unsigned long deadline = millis() + 500; // 500ms timeout
-    while (ss.available() == 0 && millis() < deadline) { /* wait */ }
+    // دریافت state از Master
+    ss.setTimeout(500);
+    if (ss.available()) {
+      receivedState = ss.parseInt();
+      logEvent("📥 Received state: " + String(receivedState));
+    } else {
+      logEvent("⌛ Timeout waiting for state; keep last: " + String(receivedState));
+    }
 
-    // if (ss.available()) {
-    //   receivedState = ss.parseInt();
-    //   logEvent("Received state: " + String(receivedState));
-    // } else {
-    //   logEvent("Timeout waiting for state; keep last: " + String(receivedState));
-    // }
-
-    ss.setTimeout(1000);  // ۱ ثانیه صبر می‌کنه تا داده بیاد
-    receivedState = ss.parseInt();
-    logEvent("📥 Received state: " + String(receivedState));
-    
+    // چراغ‌ها طبق استیت روشن می‌شن
+    applyState(receivedState);
     isAwake = true;
   }
 
+  // اگر awake هست
   if (isAwake) {
-    unsigned long startTime = millis();
+    static bool carHandled = false;  // flag برای اطمینان از یک بار اجرا
+    bool carDetected = isObjectDetected();
 
-  bool carDetected = false;
-    while (millis() - startTime < 10000) { // حداکثر 10 ثانیه بیدار باشه
-      carDetected = isObjectDetected();
-      if (carDetected) {
-          applyState(STATE_ON);
-          delay(500);
-          digitalWrite(WAKE_NEXT_NODE_PIN, LOW);
-          delay(50);
-          digitalWrite(WAKE_NEXT_NODE_PIN, HIGH);
-          logEvent("Sent wake signal to next node");
-          delay(1500);
-          break;
-      }
+    if (carDetected && !carHandled) {
+      carHandled = true;
+
+      // روشن کردن چراغ بعدی
+      int nextLED = (receivedState == STATE_ON || receivedState == STATE_DIM) ? LED_PIN2 : LED_PIN1;
+      digitalWrite(nextLED, HIGH);
+      logEvent("🚗 Car detected, next LED ON");
+
+      delay(2000);  // فاصله ۲ ثانیه
+      digitalWrite(nextLED, LOW);
+      logEvent("⏹️ Next LED OFF after 2s, main LED stays per state");
     }
 
-    applyState(receivedState);
-    logEvent("↩️ Returned to previous state");
-    isAwake = false;
+    // اگر state OFF از مستر رسید، reset
+    if (receivedState == STATE_OFF) {
+      digitalWrite(LED_PIN1, LOW);
+      digitalWrite(LED_PIN2, LOW);
+      carHandled = false;
+      logEvent("🔌 State OFF: all LEDs OFF");
+    }
   }
 
   goToSleep();
 
+  // گزارش آمار
   if (wakeup_count >= 10) {
     logEvent("Average Latency (ms): " + String(total_latency / wakeup_count));
-    logEvent("Wakeup Rate: " + String(wakeup_count / 10) + " per second");
-    logEvent("Average mA: " + String(total_mA / wakeup_count));
     total_latency = 0;
     wakeup_count = 0;
-    total_mA = 0;
   }
 }
