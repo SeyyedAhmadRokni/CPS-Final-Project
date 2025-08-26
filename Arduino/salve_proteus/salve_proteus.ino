@@ -101,13 +101,14 @@ void setup() {
   pinMode(WAKE_PIN, INPUT_PULLUP);
   pinMode(WAKE_NEXT_NODE_PIN, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(SOFT_RX, INPUT);  // Explicitly set SOFT_RX as input
   digitalWrite(WAKE_NEXT_NODE_PIN, HIGH);  // Initial HIGH
   digitalWrite(LED_PIN1, LOW);
   digitalWrite(LED_PIN2, LOW);
   logEvent("Pin modes set: WAKE_PIN state = " + String(digitalRead(WAKE_PIN)));
 
   logEvent("Testing interrupt setup...");
-  attachInterrupt(digitalPinToInterrupt(WAKE_PIN), wakeUpISR, LOW);  // Changed to LOW for power-down mode
+  attachInterrupt(digitalPinToInterrupt(WAKE_PIN), wakeUpISR, LOW);  // LOW for power-down
   logEvent("Interrupt attached, initial WAKE_PIN state: " + String(digitalRead(WAKE_PIN)));
 
   logEvent("Slave ready and entering sleep...");
@@ -125,7 +126,7 @@ void loop() {
     // Wait for command from previous node
     unsigned long startWait = millis();
     logEvent("Waiting for command, initial SOFT_RX state: " + String(digitalRead(SOFT_RX)));
-    while (!ss.available() && (millis() - startWait < 4000)) {
+    while (!ss.available() && (millis() - startWait < 6000)) {
       delay(10);
     }
 
@@ -134,14 +135,13 @@ void loop() {
       logEvent("📥 Received command: " + String(receivedCommand));
     } else {
       logEvent("⌛ Timeout waiting for command, SOFT_RX state: " + String(digitalRead(SOFT_RX)));
-      receivedCommand = ' ';  // Invalid
     }
 
     // Process command
     if (receivedCommand == '1') {  // Propagate LED1 ON (night/rain)
       applyLED1(true);
       wakeNext();
-      delay(100);
+      delay(300); // Increased delay
       sendCommandToNext('1');
       delay(100);
       endWakeNext();
@@ -150,7 +150,7 @@ void loop() {
     } else if (receivedCommand == '0') {  // Propagate LED1 OFF (day/no rain)
       applyLED1(false);
       wakeNext();
-      delay(100);
+      delay(300);
       sendCommandToNext('0');
       delay(100);
       endWakeNext();
@@ -164,7 +164,7 @@ void loop() {
         if (isButtonPressed()) {
           buttonHandled = true;
           wakeNext();
-          delay(100);
+          delay(300);
           sendCommandToNext('2');
           delay(2000);  // Wait 2 seconds
           applyLED2(false);

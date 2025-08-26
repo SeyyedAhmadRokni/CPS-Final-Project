@@ -96,13 +96,14 @@ void sendCommandToSlave(char cmd) {
   logEvent("Sending command to slave: " + String(cmd));
   for (int i = 0; i < 3; i++) {  // Retry up to 3 times
     wakeSlave();
-    delay(200);  // Give time for slave to wake and prepare
+    delay(300);  // Increased delay for slave to fully wake and prepare Serial
+    logEvent("SOFT_TX state before send: " + String(digitalRead(SOFT_TX)));
     ss.print(cmd);
     ss.flush();  // Ensure data is sent
     delay(100);   // Wait for transmission
     logEvent("Command attempt " + String(i + 1) + ": " + String(cmd));
     endWakeSlave();
-    delay(100);  // Short delay between retries
+    delay(200);  // Delay between retries
   }
   t_comm_end = millis();
   total_latency += (t_comm_end - t_comm_start);
@@ -143,19 +144,13 @@ void logEvent(String message) {
 }
 
 void applyLED1(bool on) {
-  t_apply_start = millis();
   digitalWrite(LED_PIN1, on ? HIGH : LOW);
   logEvent(on ? "🌙 Master LED1 ON (night/rain)" : "🔌 Master LED1 OFF");
-  t_apply_end = millis();
-  total_latency += (t_apply_end - t_apply_start);
 }
 
 void applyLED2(bool on) {
-  t_apply_start = millis();
   digitalWrite(LED_PIN2, on ? HIGH : LOW);
   logEvent(on ? "💡 Master LED2 ON (car)" : "⏹️ Master LED2 OFF");
-  t_apply_end = millis();
-  total_latency += (t_apply_end - t_apply_start);
 }
 
 void setup() {
@@ -171,9 +166,10 @@ void setup() {
   pinMode(LED_PIN1, OUTPUT);
   pinMode(LED_PIN2, OUTPUT);
   pinMode(WAKE_SLAVE_PIN, OUTPUT);
-  digitalWrite(WAKE_SLAVE_PIN, HIGH);  // Initial HIGH for LOW level interrupt
+  digitalWrite(WAKE_SLAVE_PIN, HIGH);  // Initial HIGH
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(LIGHT_PIN, INPUT);
+  pinMode(SOFT_TX, OUTPUT);  // Explicitly set SOFT_TX as output
   logEvent("Pin modes set");
 
   dht.begin(); 
