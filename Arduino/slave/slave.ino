@@ -171,10 +171,11 @@ void loop()
         { // Propagate LED1 OFF (day/no rain)
             applyLED1(false);
             wakeNext();
+            delay(20);
+            endWakeNext();
             delay(300);
             sendCommandToNext('0');
             delay(100);
-            endWakeNext();
             isAwake = false;
         }
         else if (receivedCommand == '2')
@@ -186,11 +187,12 @@ void loop()
                 if (isObjectDetected())
                 {
                     wakeNext();
+                    delay(20);
+                    endWakeNext();
                     delay(300);
                     sendCommandToNext('2');
                     delay(2000); // Wait 2 seconds
                     applyLED2(false);
-                    endWakeNext();
                     break;
                 }
                 delay(10);
