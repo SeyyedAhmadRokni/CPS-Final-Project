@@ -76,14 +76,14 @@ bool isRainy() {
 }
 bool isObjectDetected() {
     logEvent("Checking distance...");
-    uint16_t duration = pulseIn(DISTANCE_PIN, HIGH, 60000);
+    uint16_t duration = pulseIn(DISTANCE_PIN, HIGH, 80000);
     if (duration == 0) {
         logEvent("Distance sensor timeout");
         return false;
     }
     uint16_t distance = duration / 10; // Convert to millimeters
     logEvent("Distance read: " + String(distance) + " mm");
-    return distance > 0 && distance < DIST_THRESHOLD_MM;
+    return distance > 200 && distance < DIST_THRESHOLD_MM;
 }
 void wakeSlave() {
     logEvent("Waking slave...");
@@ -197,7 +197,7 @@ void loop() {
         sendCommandToSlave('3');
         logEvent("Deactivated night/rain mode, propagated to slaves");
     }
-    wasActive = isActive;
+    wasActive = isActive;                                                                                 
     if (isActive) {
         if (isObjectDetected()) {
             applyLED2(true);

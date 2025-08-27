@@ -50,6 +50,7 @@ void applyLED2(bool on)
 
 void goToSleep()
 {
+    attachInterrupt(digitalPinToInterrupt(WAKE_PIN), wakeUpISR, LOW); // LOW for power-down
     logEvent("💤 Entering sleep mode");
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     sleep_enable();
@@ -61,6 +62,7 @@ void goToSleep()
 
 void wakeUpISR()
 {
+    detachInterrupt(digitalPinToInterrupt(WAKE_PIN));
     wakeFlag = true;
     wakeup_count++;
     t_wake_start = millis();
@@ -69,14 +71,14 @@ void wakeUpISR()
 
 bool isObjectDetected() {
     logEvent("Checking distance...");
-    uint16_t duration = pulseIn(DISTANCE_PIN, HIGH, 60000);
+    uint16_t duration = pulseIn(DISTANCE_PIN, HIGH, 80000);
     if (duration == 0) {
         logEvent("Distance sensor timeout");
         return false;
     }
     uint16_t distance = duration / 10;
     logEvent("Distance read: " + String(distance) + " mm");
-    return distance > 0 && distance < DIST_THRESHOLD_MM;
+    return distance > 200 && distance < DIST_THRESHOLD_MM;
 }
 
 void sendCommandToNext(char cmd)
@@ -158,7 +160,7 @@ void loop()
         { // Propagate LED1 ON (night/rain)
             applyLED1(true);
             wakeNext();
-            delay(10); // Increased delay
+            delay(300); // Increased delay
             sendCommandToNext('1');
             delay(25);
             isAwake = false;
@@ -167,7 +169,7 @@ void loop()
         { // Propagate LED1 OFF (day/no rain)
             applyLED1(false);
             wakeNext();
-            delay(10); // Increased delay
+            delay(300); // Increased delay
             sendCommandToNext('3');
             delay(25);
             isAwake = false;
@@ -175,8 +177,8 @@ void loop()
         else if (receivedCommand == '2')
         { // Car detection mode: Turn on LED2, wait for button
             applyLED2(true);
-
-            while (true)
+            int i=0;
+            while (i < 2000)
             {
                 if (isObjectDetected())
                 {
@@ -187,13 +189,14 @@ void loop()
                     applyLED2(false);
                     break;
                 }
+                i++;
                 delay(10);
             }
             isAwake = false;
         }
         else
         {
-            isAwake = false;
+            // isAwake = false;
             logEvent("Invalid command received: " + String(receivedCommand));
         }
 
@@ -211,7 +214,7 @@ void loop()
     }
 
     // Sleep if not awake
-    if (!isAwake)
+    if (!isAwake && !wakeFlag)
     {
         goToSleep();
     }
