@@ -34,7 +34,6 @@ unsigned long t_read = 0;      // Time to read sensor (milliseconds)
 unsigned long t_decide = 0;    // Time for CPU decision (milliseconds) 
 unsigned long t_apply = 0;     // Time to apply output (milliseconds)
 unsigned long t_ISR = 0;       // Worst-case interrupt delay (milliseconds)
-unsigned long t_margin = 15;   // Safety margin for jitter/noise (milliseconds)
 unsigned long t_obj = (L_zone / v_max) * 1000;  // Object presence time in milliseconds
 
 // State tracking
@@ -126,11 +125,8 @@ unsigned long calculatePollingWindowSize() {
   unsigned long end_apply = millis();
   t_apply = end_apply - start_apply;  
   
-  unsigned long start_ISR = millis();
-  unsigned long end_ISR = millis();
-  t_ISR = end_ISR - start_ISR;  
 
-  unsigned long T_poll_max = t_obj - (t_read + t_decide + t_apply + t_ISR) - t_margin;
+  unsigned long T_poll_max = t_obj - (t_read + t_decide + t_apply);
   return T_poll_max;
 }
 
@@ -226,5 +222,5 @@ void loop() {
   }
 
   logEvent("Loop finished");
-  delay(2000); // Increased for lower power, but still responsive
+  delay(T_poll_max); // Increased for lower power, but still responsive
 }
