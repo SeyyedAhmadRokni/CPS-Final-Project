@@ -1,3 +1,5 @@
+//slave
+
 #include <Wire.h>
 #include <avr/sleep.h>
 #include <SoftwareSerial.h>
@@ -137,22 +139,34 @@ void loop()
         total_latency += (t_wake_end - t_sleep_enter);
         isAwake = true;
 
-        // Wait for command from previous node
+        // Wait for command from previous node, read all available and keep the last one
         unsigned long startWait = millis();
+        receivedCommand = ' '; // Initialize
         logEvent("Waiting for command, initial SOFT_RX state: " + String(digitalRead(SOFT_RX)));
-        while (!ss.available() && (millis() - startWait < 6000))
+        bool commandReceived = false;
+        while (millis() - startWait < 6000)
         {
+            if (ss.available())
+            {
+                while (ss.available())
+                {
+                    receivedCommand = ss.read(); // Read all, overwrite to keep the last one
+                    logEvent("Read command from buffer: " + String(receivedCommand));
+                }
+                commandReceived = true;
+            }
+            if (commandReceived) break; // Exit loop if we have read at least one command
             delay(10);
         }
 
-        if (ss.available())
+        if (commandReceived)
         {
-            receivedCommand = ss.read();
-            logEvent("Received command: " + String(receivedCommand));
+            logEvent("Final received command (last one): " + String(receivedCommand));
         }
         else
         {
             logEvent("Timeout waiting for command, SOFT_RX state: " + String(digitalRead(SOFT_RX)));
+            receivedCommand = ' '; // Reset if timeout
         }
 
         // Process command
@@ -208,7 +222,7 @@ void loop()
             logEvent("Wakeup Count: " + String(wakeup_count));
             total_latency = 0;
             event_count = 0;
-            wakeup_count = 0;
+            wake6up_count = 0;
         }
         receivedCommand = ' ';
     }
